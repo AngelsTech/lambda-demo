@@ -1,0 +1,47 @@
+```groovy
+pipeline {
+  agent { label 'any' }
+
+  environment {
+    AWS_DEFAULT_REGION = 'us-east-1'
+    FUNCTION_NAME = 'my-scheduled-lambda'
+  }
+
+  stages {
+    stage('Check AWS CLI') {
+      steps {
+        withCredentials([aws(
+          credentialsId: 'lambda-function-aws-cred',
+          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+        )]) {
+          sh 'aws --version'
+        }
+      }
+    }
+
+    stage('Zip Lambda Code') {
+      steps {
+        sh '''
+          zip lambda_function.zip lambda_function.py
+        '''
+      }
+    }
+
+    stage('Deploy to Lambda') {
+      steps {
+        withCredentials([aws(
+          credentialsId: 'lambda-function-aws-cred',
+          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+        )]) {
+          sh '''
+            aws lambda update-function-code \
+              --function-name $FUNCTION_NAME \
+              --zip-file fileb://lambda_function.zip
+          '''
+        }
+      }
+    }
+  }
+}
