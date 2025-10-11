@@ -1,0 +1,174 @@
+pipeline:
+  name: lambda-function-cicd
+  identifier: lambdafunctioncicd
+  projectIdentifier: lambda
+  orgIdentifier: default
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        connectorRef: ammareurus
+        repoName: harness-test
+        build: <+input>
+  variables:
+    - name: s3_bucket
+      type: String
+      description: S3 bucket for Lambda artifacts
+      required: true
+      value: <+input>
+    - name: layer_arn
+      type: String
+      description: Lambda Layer ARN from build stage
+      required: false
+      value: ""
+  stages:
+    - stage:
+        name: Build Lambda Artifacts
+        identifier: build_lambda_artifacts
+        description: Build Lambda layer and package function code
+        type: CI
+        spec:
+          cloneCodebase: true
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: myekscluster
+              namespace: harness-delegate-ng
+              serviceAccountName: helm-delegate
+              automountServiceAccountToken: true
+              nodeSelector: {}
+              os: Linux
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Build Lambda Layer
+                  identifier: build_lambda_layer
+                  spec:
+                    connectorRef: myekscluster
+                    image: python:3.13-slim
+                    shell: Bash
+                    command: |-
+                      set -e
+
+                      echo "Installing AWS CLI..."
+                      apt-get update && apt-get install -y zip awscli curl
+
+                      echo "Configuring AWS CLI for pod identity..."
+                      # Configure AWS CLI for pod identity
+                      export AWS_REGION=us-east-1
+                      export AWS_DEFAULT_REGION=us-east-1
+
+                      # Test AWS credentials (pod identity should handle authentication automatically)
+                      echo "Testing AWS credentials..."
+                      aws sts get-caller-identity
+
+                      echo "Building Lambda layer from requirements.txt..."
+                      cd lambda/dev
+
+                      # Create layer directory structure
+                      mkdir -p python/lib/python3.13/site-packages
+
+                      # Install dependencies to the layer directory
+                      pip install -r requirements.txt -t python/lib/python3.13/site-packages/
+
+                      # Package the layer
+                      zip -r layer.zip python/
+
+                      echo "Uploading layer to S3..."
+                      aws s3 cp layer.zip s3://<+pipeline.variables.s3_bucket>/lambda-layers/<+pipeline.sequenceId>/layer.zip
+
+                      echo "Publishing Lambda layer..."
+                      LAYER_ARN=$(aws lambda publish-layer-version \
+                        --layer-name my-lambda-dependencies-layer-ammar \
+                        --description "Lambda layer with dependencies from requirements.txt" \
+                        --content S3Bucket=<+pipeline.variables.s3_bucket>,S3Key=lambda-layers/<+pipeline.sequenceId>/layer.zip \
+                        --compatible-runtimes python3.13 \
+                        --region us-east-1 \
+                        --query 'LayerVersionArn' \
+                        --output text)
+
+                      echo "Layer ARN: $LAYER_ARN"
+              - step:
+                  type: Run
+                  name: Package Lambda Function
+                  identifier: package_lambda_function
+                  spec:
+                    connectorRef: myekscluster
+                    image: python:3.13-slim
+                    shell: Bash
+                    command: |-
+                      set -e
+
+                      echo "Installing AWS CLI..."
+                      apt-get update && apt-get install -y zip awscli curl
+
+                      echo "Configuring AWS CLI for pod identity..."
+                      # Configure AWS CLI for pod identity
+                      export AWS_REGION=us-east-1
+                      export AWS_DEFAULT_REGION=us-east-1
+
+                      # Test AWS credentials (pod identity should handle authentication automatically)
+                      echo "Testing AWS credentials..."
+                      aws sts get-caller-identity
+
+                      echo "Packaging Lambda function code..."
+                      cd lambda/dev
+
+                      # Create deployment package (just the function code, dependencies are in layer)
+                      zip lambda-function.zip lambda_function.py
+
+                      echo "Uploading function code to S3..."
+                      aws s3 cp lambda-function.zip s3://<+pipeline.variables.s3_bucket>/lambda-deployments/<+pipeline.sequenceId>/lambda-function.zip
+
+                      echo "Lambda function code uploaded successfully!"
+          caching:
+            enabled: false
+        delegateSelectors:
+          - helm-delegate
+    - stage:
+        name: deploylambda
+        identifier: deploylambda
+        description: ""
+        type: Deployment
+        spec:
+          deploymentType: AwsLambda
+          service:
+            serviceRef: serverlesslambdadeployment
+            serviceInputs:
+              serviceDefinition:
+                type: AwsLambda
+                spec:
+                  artifacts:
+                    primary:
+                      primaryArtifactRef: <+input>
+                      sources: <+input>
+          environment:
+            environmentRef: mydev
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: myinfra2
+          execution:
+            steps:
+              - step:
+                  name: Deploy Aws Lambda
+                  identifier: deployawslambda
+                  type: AwsLambdaDeploy
+                  timeout: 10m
+                  spec: {}
+            rollbackSteps:
+              - step:
+                  name: Aws Lambda rollback
+                  identifier: awslambdarollback
+                  type: AwsLambdaRollback
+                  timeout: 10m
+                  spec: {}
+        tags: {}
+        delegateSelectors:
+          - helm-delegate
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
