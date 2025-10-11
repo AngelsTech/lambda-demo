@@ -59,7 +59,7 @@ pipeline:
                       aws sts get-caller-identity
 
                       echo "Building Lambda layer from requirements.txt..."
-                      cd lambda/dev
+                      cd my_lambda
 
                       # Create layer directory structure
                       mkdir -p python/lib/python3.13/site-packages
