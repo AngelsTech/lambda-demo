@@ -93,20 +93,13 @@ pipeline:
         spec:
           deploymentType: AwsLambda
           service:
-            serviceRef: serverlesslambdadeployment
-            serviceInputs:
-              serviceDefinition:
-                type: AwsLambda
-                spec:
-                  artifacts:
-                    primary:
-                      primaryArtifactRef: <+input>
-                      sources: <+input>
+            serviceRef: lambdaservice
           environment:
-            environmentRef: mydev
+            environmentRef: devtest
+            gitBranch: master
             deployToAll: false
             infrastructureDefinitions:
-              - identifier: myinfra2
+              - identifier: devtestinfra
           execution:
             steps:
               - step:
