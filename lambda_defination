@@ -1,0 +1,6 @@
+functionName: hello harness
+runtime: python3.13
+handler: lambda_function.lambda_handler
+role: arn:aws:iam::529088259986:role/service-role/s3_execRole 
+memorySize: 512
+timeout: 30
