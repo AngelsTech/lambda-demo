@@ -3,3 +3,20 @@ service:
   identifier: lambdaservice
   orgIdentifier: default
   projectIdentifier: lambda
+  serviceDefinition:
+    spec:
+      manifests:
+        - manifest:
+            identifier: lambda_manifest
+            type: AwsLambdaFunctionDefinition
+            spec:
+              store:
+                type: Github
+                spec:
+                  connectorRef: org.githupharness
+                  gitFetchType: Branch
+                  paths:
+                    - lambda_defination
+                  repoName: lambda-demo
+                  branch: master
+    type: AwsLambda
