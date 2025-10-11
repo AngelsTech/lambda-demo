@@ -7,15 +7,10 @@ pipeline:
   properties:
     ci:
       codebase:
-        connectorRef: ammareurus
-        repoName: harness-test
+        connectorRef: githupharnessconnector
+        repoName: lambda-demo
         build: <+input>
   variables:
-    - name: s3_bucket
-      type: String
-      description: S3 bucket for Lambda artifacts
-      required: true
-      value: <+input>
     - name: layer_arn
       type: String
       description: Lambda Layer ARN from build stage
@@ -23,16 +18,16 @@ pipeline:
       value: ""
   stages:
     - stage:
-        name: Build Lambda Artifacts
+        name: Build Lambda Layer
         identifier: build_lambda_artifacts
-        description: Build Lambda layer and package function code
+        description: Build and publish Lambda layer with dependencies
         type: CI
         spec:
           cloneCodebase: true
           infrastructure:
             type: KubernetesDirect
             spec:
-              connectorRef: myekscluster
+              connectorRef: eksconnector
               namespace: harness-delegate-ng
               serviceAccountName: helm-delegate
               automountServiceAccountToken: true
@@ -45,7 +40,7 @@ pipeline:
                   name: Build Lambda Layer
                   identifier: build_lambda_layer
                   spec:
-                    connectorRef: myekscluster
+                    connectorRef: eksconnector
                     image: python:3.13-slim
                     shell: Bash
                     command: |-
@@ -75,53 +70,17 @@ pipeline:
                       # Package the layer
                       zip -r layer.zip python/
 
-                      echo "Uploading layer to S3..."
-                      aws s3 cp layer.zip s3://<+pipeline.variables.s3_bucket>/lambda-layers/<+pipeline.sequenceId>/layer.zip
-
-                      echo "Publishing Lambda layer..."
+                      echo "Publishing Lambda layer directly..."
                       LAYER_ARN=$(aws lambda publish-layer-version \
                         --layer-name my-lambda-dependencies-layer-ammar \
                         --description "Lambda layer with dependencies from requirements.txt" \
-                        --content S3Bucket=<+pipeline.variables.s3_bucket>,S3Key=lambda-layers/<+pipeline.sequenceId>/layer.zip \
+                        --zip-file fileb://layer.zip \
                         --compatible-runtimes python3.13 \
                         --region us-east-1 \
                         --query 'LayerVersionArn' \
                         --output text)
 
                       echo "Layer ARN: $LAYER_ARN"
-              - step:
-                  type: Run
-                  name: Package Lambda Function
-                  identifier: package_lambda_function
-                  spec:
-                    connectorRef: myekscluster
-                    image: python:3.13-slim
-                    shell: Bash
-                    command: |-
-                      set -e
-
-                      echo "Installing AWS CLI..."
-                      apt-get update && apt-get install -y zip awscli curl
-
-                      echo "Configuring AWS CLI for pod identity..."
-                      # Configure AWS CLI for pod identity
-                      export AWS_REGION=us-east-1
-                      export AWS_DEFAULT_REGION=us-east-1
-
-                      # Test AWS credentials (pod identity should handle authentication automatically)
-                      echo "Testing AWS credentials..."
-                      aws sts get-caller-identity
-
-                      echo "Packaging Lambda function code..."
-                      cd lambda/dev
-
-                      # Create deployment package (just the function code, dependencies are in layer)
-                      zip lambda-function.zip lambda_function.py
-
-                      echo "Uploading function code to S3..."
-                      aws s3 cp lambda-function.zip s3://<+pipeline.variables.s3_bucket>/lambda-deployments/<+pipeline.sequenceId>/lambda-function.zip
-
-                      echo "Lambda function code uploaded successfully!"
           caching:
             enabled: false
         delegateSelectors:
