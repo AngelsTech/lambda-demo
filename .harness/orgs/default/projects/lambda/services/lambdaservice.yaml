@@ -18,11 +18,10 @@ service:
                   paths:
                     - lambda_defination
                   repoName: lambda-demo
-                  branch: master
+                  branch: harness
     artifacts:
       primary:
-        sourceType: s3
-        connectorRef: aws_connector
-        bucketName: my-lambda-artifacts
-        filePath: lambda.zip
+        type: Harness
+        spec:
+          fileReference: /.harness/lambda_package.zip
     type: AwsLambda
