@@ -94,14 +94,6 @@ pipeline:
           deploymentType: AwsLambda
           service:
             serviceRef: lambdaservice
-            serviceInputs:
-              serviceDefinition:
-                type: AwsLambda
-                spec:
-                  artifacts:
-                    primary:
-                      primaryArtifactRef: <+input>
-                      sources: <+input>
           environment:
             environmentRef: devtest
             gitBranch: master
