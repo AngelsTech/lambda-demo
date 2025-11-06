@@ -19,4 +19,10 @@ service:
                     - lambda_defination
                   repoName: lambda-demo
                   branch: master
+    artifacts:
+      primary:
+        sourceType: s3
+        connectorRef: aws_connector
+        bucketName: my-lambda-artifacts
+        filePath: lambda.zip
     type: AwsLambda
